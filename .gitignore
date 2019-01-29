@@ -1,0 +1,11 @@
+.firebase
+.firebaserc
+elm-stuff
+functions/node_modules
+functions/node_modules/package-lock.json
+package-lock.json
+public
+node_modules
+
+# elm-repl generated files
+repl-temp-*
