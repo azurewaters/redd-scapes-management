@@ -16,87 +16,82 @@ main =
 
 
 
---INIT
+-- INIT
 
 
-type alias CredentialsToVerify =
+type alias Credentials =
     { login : String
     , password : String
     }
 
 
-type alias MaybeLogin =
-    Maybe String
-
-
-type alias MaybePassword =
-    Maybe String
+type alias CredentialsInputModel =
+    { login : Maybe String
+    , password : Maybe String
+    , reasonAuthenticationFailed : Maybe ReasonAuthenticationFailed
+    }
 
 
 type alias Meeting =
-    { name : String
-    , date : String
-    , scheduledEndTime : String
-    , scheduledStartTime : String
-    }
-
-
-type alias Meetings =
-    List Meeting
-
-
-type alias LoginModel =
-    { login : Maybe String
-    , password : Maybe String
-    , reasonWhyAuthenticationFailed : Maybe ReasonWhyAuthenticationFailed
-    }
-
-
-type alias User =
     { name : String }
 
 
+type alias MeetingsModel =
+    List Meeting
+
+
+type LoginModel
+    = CredentialsInput CredentialsInputModel
+    | Verification
+
+
 type Model
-    = Ready
-    | CredentialsAreBeingTypedIn LoginModel
-    | VerifyingCredentials
-    | FailedToVerifyCredentials LoginModel
-    | ShowMainMenu User
-    | ShowMeetings User Meetings
-    | CreateAMeeting User Meeting
+    = Login LoginModel
+    | Menu
+    | Meetings MeetingsModel
+    | CreateAMeeting
 
 
-type ReasonWhyAuthenticationFailed
-    = LoginHasntBeenTypedIn
-    | PasswordHasntBeenTypedIn
-    | LoginAndPasswordHasntBeenTypedIn
-    | LoginAndPasswordCombinationDoesntExistInTheDatabase
-    | NetworkIsDisconnected
+type ReasonAuthenticationFailed
+    = LoginWasNotTypedIn
+    | LoginAndPasswordWereIncorrect
+    | NeitherLoginNorPasswordWereTypedIn
+    | NetworkError
+    | PasswordWasNotTypedIn
+
+
+emptyCredentialsInputModel : CredentialsInputModel
+emptyCredentialsInputModel =
+    { login = Nothing
+    , password = Nothing
+    , reasonAuthenticationFailed = Nothing
+    }
+
+
+emptyLoginModel : LoginModel
+emptyLoginModel =
+    CredentialsInput emptyCredentialsInputModel
+
+
+emptyModel : Model
+emptyModel =
+    Login emptyLoginModel
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Ready, Cmd.none )
+    ( emptyModel, Cmd.none )
 
 
 
---UPDATE
+-- UPDATE
 
 
 type Msg
     = NoOp
     | LoginButtonClicked
-    | LoginIsBeingTypedIn String
-    | PasswordIsBeingTypedIn String
-
-
-setLoginModelsReasonWhyAuthenticationFailed : LoginModel -> ReasonWhyAuthenticationFailed -> Model
-setLoginModelsReasonWhyAuthenticationFailed loginModel reasonWhyAuthenticationFailed =
-    let
-        newLoginModel =
-            { loginModel | reasonWhyAuthenticationFailed = Just reasonWhyAuthenticationFailed }
-    in
-        FailedToVerifyCredentials newLoginModel
+    | LoginTypedIn String
+    | PasswordTypedIn String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -106,100 +101,147 @@ update msg model =
             ( model, Cmd.none )
 
         LoginButtonClicked ->
-            let
-                newModelCommand =
-                    case model of
-                        Ready ->
-                            let
-                                newLoginModel =
-                                    { login = Nothing
-                                    , password = Nothing
-                                    , reasonWhyAuthenticationFailed = Just LoginAndPasswordHasntBeenTypedIn
-                                    }
-                            in
-                                ( FailedToVerifyCredentials newLoginModel, Cmd.none )
+            ( updateLoginButtonClicked model, updateLoginButtonClickedCommand model )
 
-                        CredentialsAreBeingTypedIn loginModel ->
-                            case ( loginModel.login, loginModel.password ) of
-                                ( Just login, Just password ) ->
-                                    let
-                                        credentialsToVerify =
-                                            CredentialsToVerify login password
-                                    in
-                                        ( VerifyingCredentials, verifyCredentials credentialsToVerify )
+        LoginTypedIn login ->
+            ( updateLoginTypedIn model login, Cmd.none )
 
-                                ( Just login, Nothing ) ->
-                                    ( setLoginModelsReasonWhyAuthenticationFailed loginModel PasswordHasntBeenTypedIn, Cmd.none )
+        PasswordTypedIn password ->
+            ( updatePasswordTypedIn model password, Cmd.none )
 
-                                ( Nothing, Just password ) ->
-                                    ( setLoginModelsReasonWhyAuthenticationFailed loginModel LoginHasntBeenTypedIn, Cmd.none )
 
-                                ( Nothing, Nothing ) ->
-                                    ( setLoginModelsReasonWhyAuthenticationFailed loginModel LoginAndPasswordHasntBeenTypedIn, Cmd.none )
+updateLoginButtonClicked : Model -> Model
+updateLoginButtonClicked model =
+    case model of
+        Login loginModel ->
+            updateLoginButtonClickedLogin loginModel |> Login
+
+        _ ->
+            model
+
+
+updateLoginButtonClickedCommand : Model -> Cmd Msg
+updateLoginButtonClickedCommand model =
+    case model of
+        Login loginModel ->
+            case loginModel of
+                CredentialsInput credentialsInputModel ->
+                    case ( credentialsInputModel.login, credentialsInputModel.password ) of
+                        ( Just login, Just password ) ->
+                            verifyCredentials { login = login, password = password }
 
                         _ ->
-                            ( model, Cmd.none )
-            in
-                newModelCommand
+                            Cmd.none
 
-        LoginIsBeingTypedIn login ->
+                _ ->
+                    Cmd.none
+
+        _ ->
+            Cmd.none
+
+
+updateLoginButtonClickedLogin : LoginModel -> LoginModel
+updateLoginButtonClickedLogin loginModel =
+    case loginModel of
+        CredentialsInput credentialsInputModel ->
             let
-                newModel =
-                    case model of
-                        Ready ->
-                            let
-                                newLoginModel =
-                                    { login = Just login
-                                    , password = Nothing
-                                    , reasonWhyAuthenticationFailed = Nothing
-                                    }
-                            in
-                                CredentialsAreBeingTypedIn newLoginModel
-
-                        CredentialsAreBeingTypedIn loginModel ->
-                            let
-                                newLoginModel =
-                                    { loginModel | login = Just login }
-                            in
-                                CredentialsAreBeingTypedIn newLoginModel
-
-                        _ ->
-                            model
+                newCredentialsInputModel =
+                    updateLoginButtonClickedLoginCredentialsInput credentialsInputModel
             in
-                ( newModel, Cmd.none )
+                if newCredentialsInputModel.reasonAuthenticationFailed == Nothing then
+                    Verification
+                else
+                    CredentialsInput newCredentialsInputModel
 
-        PasswordIsBeingTypedIn password ->
-            let
-                newModel =
-                    case model of
-                        Ready ->
-                            let
-                                newLoginModel =
-                                    { login = Nothing
-                                    , password = Just password
-                                    , reasonWhyAuthenticationFailed = Nothing
-                                    }
-                            in
-                                CredentialsAreBeingTypedIn newLoginModel
-
-                        CredentialsAreBeingTypedIn loginModel ->
-                            let
-                                newLoginModel =
-                                    { loginModel | password = Just password }
-                            in
-                                CredentialsAreBeingTypedIn newLoginModel
-
-                        _ ->
-                            model
-            in
-                ( newModel, Cmd.none )
+        Verification ->
+            loginModel
 
 
-port verifyCredentials : CredentialsToVerify -> Cmd msg
+updateLoginButtonClickedLoginCredentialsInput : CredentialsInputModel -> CredentialsInputModel
+updateLoginButtonClickedLoginCredentialsInput credentialsInputModel =
+    let
+        newCredentialsInputModel =
+            case ( credentialsInputModel.login, credentialsInputModel.password ) of
+                ( Nothing, Nothing ) ->
+                    { credentialsInputModel | reasonAuthenticationFailed = Just NeitherLoginNorPasswordWereTypedIn }
+
+                ( Just login, Nothing ) ->
+                    { credentialsInputModel | reasonAuthenticationFailed = Just LoginWasNotTypedIn }
+
+                ( Nothing, Just password ) ->
+                    { credentialsInputModel | reasonAuthenticationFailed = Just PasswordWasNotTypedIn }
+
+                ( Just login, Just password ) ->
+                    { credentialsInputModel | reasonAuthenticationFailed = Nothing }
+    in
+        newCredentialsInputModel
+
+
+updateLoginTypedIn : Model -> String -> Model
+updateLoginTypedIn model login =
+    case model of
+        Login loginModel ->
+            updateLoginTypedInLogin loginModel login
+                |> Login
+
+        _ ->
+            model
+
+
+updateLoginTypedInLogin : LoginModel -> String -> LoginModel
+updateLoginTypedInLogin loginModel login =
+    case loginModel of
+        CredentialsInput credentialsInputModel ->
+            updateLoginTypedInLoginCredentialsInput credentialsInputModel login
+                |> CredentialsInput
+
+        _ ->
+            loginModel
+
+
+updateLoginTypedInLoginCredentialsInput : CredentialsInputModel -> String -> CredentialsInputModel
+updateLoginTypedInLoginCredentialsInput credentialsInputModel login =
+    if String.length login == 0 then
+        { credentialsInputModel | login = Nothing }
+    else
+        { credentialsInputModel | login = Just login }
+
+
+updatePasswordTypedIn : Model -> String -> Model
+updatePasswordTypedIn model password =
+    case model of
+        Login loginModel ->
+            updatePasswordTypedInLogin loginModel password
+                |> Login
+
+        _ ->
+            model
+
+
+updatePasswordTypedInLogin : LoginModel -> String -> LoginModel
+updatePasswordTypedInLogin loginModel password =
+    case loginModel of
+        CredentialsInput credentialsInputModel ->
+            updatePasswordTypedInLoginCredentialsInput credentialsInputModel password
+                |> CredentialsInput
+
+        _ ->
+            loginModel
+
+
+updatePasswordTypedInLoginCredentialsInput : CredentialsInputModel -> String -> CredentialsInputModel
+updatePasswordTypedInLoginCredentialsInput credentialsInputModel password =
+    if String.length password == 0 then
+        { credentialsInputModel | password = Nothing }
+    else
+        { credentialsInputModel | password = Just password }
+
+
+port verifyCredentials : Credentials -> Cmd msg
 
 
 
---SUBSCRIPTIONS
+-- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
@@ -208,66 +250,78 @@ subscriptions model =
 
 
 
---VIEW
+-- VIEW
+
+
+getErrorText : Maybe ReasonAuthenticationFailed -> String
+getErrorText reasonAuthenticationFailed =
+    case reasonAuthenticationFailed of
+        Just reason ->
+            case reason of
+                LoginWasNotTypedIn ->
+                    "Please type in your login and try again"
+
+                LoginAndPasswordWereIncorrect ->
+                    "Sorry, your credentials could not be verified"
+
+                NeitherLoginNorPasswordWereTypedIn ->
+                    "Please type in both, your login and your password, and try again"
+
+                NetworkError ->
+                    "There was a problem connecting to the server"
+
+                PasswordWasNotTypedIn ->
+                    "Please type in your password and try again"
+
+        Nothing ->
+            ""
 
 
 view : Model -> Html Msg
 view model =
     case model of
-        Ready ->
-            viewLogin model
+        Login loginModel ->
+            viewLogin loginModel
 
-        CredentialsAreBeingTypedIn loginModel ->
-            viewLogin model
+        Menu ->
+            viewMenu
 
-        VerifyingCredentials ->
-            viewVerifyingCredentials
+        Meetings meetingsModel ->
+            viewMeetings
 
-        FailedToVerifyCredentials loginModel ->
-            viewLogin model
-
-        ShowMainMenu user ->
-            viewMainMenu user
-
-        ShowMeetings user meetings ->
-            viewMeetings user meetings
-
-        CreateAMeeting user meeting ->
-            viewCreateAMeeting user
+        CreateAMeeting ->
+            viewCreateAMeeting
 
 
-viewCreateAMeeting : User -> Html Msg
-viewCreateAMeeting user =
+viewCreateAMeeting : Html Msg
+viewCreateAMeeting =
     div [] [ text "Create a meeting" ]
 
 
-viewLogin : Model -> Html Msg
-viewLogin model =
-    div []
-        [ input [ onInput LoginIsBeingTypedIn ] []
-        , input [ onInput PasswordIsBeingTypedIn, type_ "password" ] []
-        , button [ onClick LoginButtonClicked ] [ text "Login" ]
-        ]
+viewMeetings : Html Msg
+viewMeetings =
+    div [] [ text "Meetings" ]
 
 
-viewMainMenu : User -> Html Msg
-viewMainMenu user =
-    div []
-        [ button [] [ text "Meetings" ]
-        , button [] [ text "Sign out" ]
-        ]
+viewMenu : Html Msg
+viewMenu =
+    div [] [ text "Menu" ]
 
 
-viewMeeting : Meeting -> Html Msg
-viewMeeting meeting =
-    div [] [ text meeting.name ]
+viewLogin : LoginModel -> Html Msg
+viewLogin loginModel =
+    case loginModel of
+        CredentialsInput credentialsInputModel ->
+            div
+                []
+                [ text "Login"
+                , input [ onInput LoginTypedIn, type_ "text" ] []
+                , input [ onInput PasswordTypedIn, type_ "password" ] []
+                , div [] [ getErrorText credentialsInputModel.reasonAuthenticationFailed |> text ]
+                , button [ onClick LoginButtonClicked ] [ text "Login" ]
+                ]
 
-
-viewMeetings : User -> Meetings -> Html Msg
-viewMeetings user meetings =
-    div [] ([ text "Meetings" ] ++ (List.map viewMeeting meetings))
-
-
-viewVerifyingCredentials : Html Msg
-viewVerifyingCredentials =
-    div [] [ text "Verifying credentials" ]
+        Verification ->
+            div
+                []
+                [ text "Verifying your credentials..." ]
