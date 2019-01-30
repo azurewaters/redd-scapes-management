@@ -1,11 +1,12 @@
+$colourBackground: rgba(161,161,161,0.15);
+$colourNormalText: #9B9B9B;
+
 * {
     box-sizing: border-box;
 }
 
 body {
-    color: white;
-    font-family: 'Dosis';
-    font-weight: 300;
+    background-color: $colourBackground;
 }
 
 body, html {

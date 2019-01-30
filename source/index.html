@@ -4,13 +4,31 @@
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta name="copyright" content="&copy; 2019 Redd">
-            <meta name="description" content="Redd Scapes coordinates the screens in your office to offer a better on-location experience.">
+            <meta name="description" content="Tools to manage Redd Scapes.">
             <title>Redd Scapes - Management</title>
             <link href="styles/index.css" rel="stylesheet">
             <script src="scripts/Main.js" type="text/javascript"></script>
     </head>
     <body>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-app.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-auth.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-database.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-firestore.js"></script>
+        <script>
+            // Initialize Firebase
+            var config = {
+                apiKey: "AIzaSyCNIxYpIh97J-RVY7BnKSAPU1FOz4TNNKU",
+                authDomain: "redd-scapes.firebaseapp.com",
+                databaseURL: "https://redd-scapes.firebaseio.com",
+                projectId: "redd-scapes",
+                storageBucket: "redd-scapes.appspot.com",
+                messagingSenderId: "1066267132327"
+            };
+            firebase.initializeApp(config);
+        </script>
+
         <main></main>
+        
         <script src="scripts/index.js" type="text/javascript"></script>
     </body>
 </html>
