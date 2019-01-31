@@ -2,8 +2,9 @@ port module Main exposing (..)
 
 import Browser exposing (element)
 import Html exposing (button, div, Html, input, text)
-import Html.Attributes exposing (type_)
+import Html.Attributes exposing (type_, value)
 import Html.Events exposing (onClick, onInput)
+import Json.Decode as Decode exposing (Decoder, field, string, map)
 
 
 main =
@@ -19,6 +20,12 @@ main =
 -- INIT
 
 
+type alias AuthenticatedUser =
+    { email : String
+    , uid : String
+    }
+
+
 type alias Credentials =
     { login : String
     , password : String
@@ -26,8 +33,8 @@ type alias Credentials =
 
 
 type alias CredentialsInputModel =
-    { login : Maybe String
-    , password : Maybe String
+    { login : String
+    , password : String
     , reasonAuthenticationFailed : Maybe ReasonAuthenticationFailed
     }
 
@@ -37,7 +44,9 @@ type alias Meeting =
 
 
 type alias MeetingsModel =
-    List Meeting
+    { authenticatedUser : AuthenticatedUser
+    , meetings : List Meeting
+    }
 
 
 type LoginModel
@@ -47,23 +56,35 @@ type LoginModel
 
 type Model
     = Login LoginModel
-    | Menu
+    | Menu AuthenticatedUser
     | Meetings MeetingsModel
-    | CreateAMeeting
+    | CreateOrEditAMeeting (Maybe Meeting)
 
 
 type ReasonAuthenticationFailed
-    = LoginWasNotTypedIn
+    = EmailWasInvalid
     | LoginAndPasswordWereIncorrect
+    | LoginWasNotFound
+    | LoginWasNotTypedIn
     | NeitherLoginNorPasswordWereTypedIn
     | NetworkError
     | PasswordWasNotTypedIn
+    | PasswordWasWrong
+    | UnknownError
+    | UserWasDisabled
+
+
+emptyAuthenticatedUser : AuthenticatedUser
+emptyAuthenticatedUser =
+    { email = ""
+    , uid = ""
+    }
 
 
 emptyCredentialsInputModel : CredentialsInputModel
 emptyCredentialsInputModel =
-    { login = Nothing
-    , password = Nothing
+    { login = ""
+    , password = ""
     , reasonAuthenticationFailed = Nothing
     }
 
@@ -71,6 +92,13 @@ emptyCredentialsInputModel =
 emptyLoginModel : LoginModel
 emptyLoginModel =
     CredentialsInput emptyCredentialsInputModel
+
+
+emptyMeetingsModel : MeetingsModel
+emptyMeetingsModel =
+    { authenticatedUser = emptyAuthenticatedUser
+    , meetings = []
+    }
 
 
 emptyModel : Model
@@ -88,33 +116,127 @@ init _ =
 
 
 type Msg
-    = NoOp
-    | LoginButtonClicked
-    | LoginTypedIn String
-    | PasswordTypedIn String
+    = AuthenticationFailed String
+    | AuthenticatedSucceeded AuthenticatedUser
+    | AuthenticatedUserSignedOut
+    | LoginLoginButtonClicked
+    | LoginLoginTypedIn String
+    | LoginPasswordTypedIn String
+    | MenuMeetingsButtonClicked
+    | MenuSignOutButtonClicked
+    | NoOp
+
+
+getReasonAuthenticationFailedUsingAuthenticationFailedErrorCode : String -> Maybe ReasonAuthenticationFailed
+getReasonAuthenticationFailedUsingAuthenticationFailedErrorCode authenticationFailedErrorCode =
+    case authenticationFailedErrorCode of
+        "auth/invalid-email" ->
+            Just EmailWasInvalid
+
+        "auth/user-disabled" ->
+            Just UserWasDisabled
+
+        "auth/user-not-found" ->
+            Just LoginWasNotFound
+
+        "auth/wrong-password" ->
+            Just PasswordWasWrong
+
+        "auth/network-request-failed" ->
+            Just NetworkError
+
+        _ ->
+            Just UnknownError
+
+
+getReasonAuthenticationFailedUsingLoginAndPassword : String -> String -> Maybe ReasonAuthenticationFailed
+getReasonAuthenticationFailedUsingLoginAndPassword login password =
+    case ( String.isEmpty login, String.isEmpty password ) of
+        ( True, True ) ->
+            Just NeitherLoginNorPasswordWereTypedIn
+
+        ( True, False ) ->
+            Just LoginWasNotTypedIn
+
+        ( False, True ) ->
+            Just PasswordWasNotTypedIn
+
+        ( False, False ) ->
+            Nothing
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        NoOp ->
-            ( model, Cmd.none )
+        AuthenticationFailed authenticationFailedErrorCode ->
+            case model of
+                Login loginModel ->
+                    case loginModel of
+                        Verification ->
+                            ( { login = "", password = "", reasonAuthenticationFailed = getReasonAuthenticationFailedUsingAuthenticationFailedErrorCode authenticationFailedErrorCode }
+                                |> CredentialsInput
+                                |> Login
+                            , Cmd.none
+                            )
 
-        LoginButtonClicked ->
-            ( updateLoginButtonClicked model, updateLoginButtonClickedCommand model )
+                        _ ->
+                            ( model, Cmd.none )
 
-        LoginTypedIn login ->
+                _ ->
+                    ( model, Cmd.none )
+
+        AuthenticatedUserSignedOut ->
+            ( Login emptyLoginModel, Cmd.none )
+
+        AuthenticatedSucceeded authenticatedUser ->
+            case model of
+                Login loginModel ->
+                    ( Menu, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        LoginLoginButtonClicked ->
+            ( updateLoginButtonClicked model
+            , updateLoginButtonClickedCommand model
+            )
+
+        LoginLoginTypedIn login ->
             ( updateLoginTypedIn model login, Cmd.none )
 
-        PasswordTypedIn password ->
+        LoginPasswordTypedIn password ->
             ( updatePasswordTypedIn model password, Cmd.none )
+
+        MenuMeetingsButtonClicked ->
+            ( Meetings emptyMeetingsModel, Cmd.none )
+
+        MenuSignOutButtonClicked ->
+            ( model, signOut True )
+
+        NoOp ->
+            ( model, Cmd.none )
 
 
 updateLoginButtonClicked : Model -> Model
 updateLoginButtonClicked model =
     case model of
         Login loginModel ->
-            updateLoginButtonClickedLogin loginModel |> Login
+            case loginModel of
+                CredentialsInput credentialsInputModel ->
+                    let
+                        reasonAuthenticationFailed =
+                            getReasonAuthenticationFailedUsingLoginAndPassword credentialsInputModel.login credentialsInputModel.password
+                    in
+                        if reasonAuthenticationFailed == Nothing then
+                            Verification
+                                |> Login
+                        else
+                            { credentialsInputModel | reasonAuthenticationFailed = reasonAuthenticationFailed }
+                                |> CredentialsInput
+                                |> Login
+
+                _ ->
+                    model
 
         _ ->
             model
@@ -126,12 +248,10 @@ updateLoginButtonClickedCommand model =
         Login loginModel ->
             case loginModel of
                 CredentialsInput credentialsInputModel ->
-                    case ( credentialsInputModel.login, credentialsInputModel.password ) of
-                        ( Just login, Just password ) ->
-                            verifyCredentials { login = login, password = password }
-
-                        _ ->
-                            Cmd.none
+                    if (credentialsInputModel.login /= "") && (credentialsInputModel.password /= "") then
+                        verifyCredentials { login = credentialsInputModel.login, password = credentialsInputModel.password }
+                    else
+                        Cmd.none
 
                 _ ->
                     Cmd.none
@@ -140,138 +260,166 @@ updateLoginButtonClickedCommand model =
             Cmd.none
 
 
-updateLoginButtonClickedLogin : LoginModel -> LoginModel
-updateLoginButtonClickedLogin loginModel =
-    case loginModel of
-        CredentialsInput credentialsInputModel ->
-            let
-                newCredentialsInputModel =
-                    updateLoginButtonClickedLoginCredentialsInput credentialsInputModel
-            in
-                if newCredentialsInputModel.reasonAuthenticationFailed == Nothing then
-                    Verification
-                else
-                    CredentialsInput newCredentialsInputModel
-
-        Verification ->
-            loginModel
-
-
-updateLoginButtonClickedLoginCredentialsInput : CredentialsInputModel -> CredentialsInputModel
-updateLoginButtonClickedLoginCredentialsInput credentialsInputModel =
-    let
-        newCredentialsInputModel =
-            case ( credentialsInputModel.login, credentialsInputModel.password ) of
-                ( Nothing, Nothing ) ->
-                    { credentialsInputModel | reasonAuthenticationFailed = Just NeitherLoginNorPasswordWereTypedIn }
-
-                ( Just login, Nothing ) ->
-                    { credentialsInputModel | reasonAuthenticationFailed = Just LoginWasNotTypedIn }
-
-                ( Nothing, Just password ) ->
-                    { credentialsInputModel | reasonAuthenticationFailed = Just PasswordWasNotTypedIn }
-
-                ( Just login, Just password ) ->
-                    { credentialsInputModel | reasonAuthenticationFailed = Nothing }
-    in
-        newCredentialsInputModel
-
-
 updateLoginTypedIn : Model -> String -> Model
 updateLoginTypedIn model login =
     case model of
         Login loginModel ->
-            updateLoginTypedInLogin loginModel login
-                |> Login
+            case loginModel of
+                CredentialsInput credentialsInputModel ->
+                    { credentialsInputModel | login = login }
+                        |> CredentialsInput
+                        |> Login
+
+                _ ->
+                    Login loginModel
 
         _ ->
             model
-
-
-updateLoginTypedInLogin : LoginModel -> String -> LoginModel
-updateLoginTypedInLogin loginModel login =
-    case loginModel of
-        CredentialsInput credentialsInputModel ->
-            updateLoginTypedInLoginCredentialsInput credentialsInputModel login
-                |> CredentialsInput
-
-        _ ->
-            loginModel
-
-
-updateLoginTypedInLoginCredentialsInput : CredentialsInputModel -> String -> CredentialsInputModel
-updateLoginTypedInLoginCredentialsInput credentialsInputModel login =
-    if String.length login == 0 then
-        { credentialsInputModel | login = Nothing }
-    else
-        { credentialsInputModel | login = Just login }
 
 
 updatePasswordTypedIn : Model -> String -> Model
 updatePasswordTypedIn model password =
     case model of
         Login loginModel ->
-            updatePasswordTypedInLogin loginModel password
-                |> Login
+            case loginModel of
+                CredentialsInput credentialsInputModel ->
+                    { credentialsInputModel | password = password }
+                        |> CredentialsInput
+                        |> Login
+
+                _ ->
+                    Login loginModel
 
         _ ->
             model
 
 
-updatePasswordTypedInLogin : LoginModel -> String -> LoginModel
-updatePasswordTypedInLogin loginModel password =
-    case loginModel of
-        CredentialsInput credentialsInputModel ->
-            updatePasswordTypedInLoginCredentialsInput credentialsInputModel password
-                |> CredentialsInput
-
-        _ ->
-            loginModel
-
-
-updatePasswordTypedInLoginCredentialsInput : CredentialsInputModel -> String -> CredentialsInputModel
-updatePasswordTypedInLoginCredentialsInput credentialsInputModel password =
-    if String.length password == 0 then
-        { credentialsInputModel | password = Nothing }
-    else
-        { credentialsInputModel | password = Just password }
-
-
 port verifyCredentials : Credentials -> Cmd msg
+
+
+port signOut : Bool -> Cmd msg
 
 
 
 -- SUBSCRIPTIONS
 
 
+authenticatedUserDecoder : Decoder AuthenticatedUser
+authenticatedUserDecoder =
+    Decode.map2 AuthenticatedUser emailDecoder uidDecoder
+
+
+emailDecoder : Decoder String
+emailDecoder =
+    Decode.field "email" Decode.string
+
+
+uidDecoder : Decoder String
+uidDecoder =
+    Decode.field "uid" Decode.string
+
+
+decodeAuthenticationFailedFromJS : Decode.Value -> Msg
+decodeAuthenticationFailedFromJS receivedValue =
+    let
+        resultOfDecoding =
+            Decode.decodeValue Decode.string receivedValue
+    in
+        case resultOfDecoding of
+            Ok errorCode ->
+                AuthenticationFailed errorCode
+
+            Err error ->
+                NoOp
+
+
+decodeAuthenticatedUserSignedOutFromJS : Decode.Value -> Msg
+decodeAuthenticatedUserSignedOutFromJS receivedValue =
+    let
+        resultOfDecoding =
+            Decode.decodeValue Decode.bool receivedValue
+    in
+        case resultOfDecoding of
+            Ok authenticationFailed ->
+                if authenticationFailed then
+                    AuthenticatedUserSignedOut
+                else
+                    NoOp
+
+            Err error ->
+                NoOp
+
+
+decodeAuthenticatedUserFromJS : Decode.Value -> Msg
+decodeAuthenticatedUserFromJS receivedValue =
+    let
+        resultOfDecoding =
+            Decode.decodeValue authenticatedUserDecoder receivedValue
+    in
+        case resultOfDecoding of
+            Ok newAuthenticatedUser ->
+                AuthenticatedSucceeded newAuthenticatedUser
+
+            Err error ->
+                AuthenticatedUserSignedOut
+
+
+port authenticationFailedFromJS : (Decode.Value -> msg) -> Sub msg
+
+
+port authenticationSucceededFromJS : (Decode.Value -> msg) -> Sub msg
+
+
+port authenticatedUserSignedOutFromJS : (Decode.Value -> msg) -> Sub msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    Sub.batch
+        [ authenticationFailedFromJS decodeAuthenticationFailedFromJS
+        , authenticationSucceededFromJS decodeAuthenticatedUserFromJS
+        , authenticatedUserSignedOutFromJS decodeAuthenticatedUserSignedOutFromJS
+        ]
 
 
 
 -- VIEW
 
 
-getErrorText : Maybe ReasonAuthenticationFailed -> String
-getErrorText reasonAuthenticationFailed =
+getErrorTextUsingReasonAuthenticationFailed : Maybe ReasonAuthenticationFailed -> String
+getErrorTextUsingReasonAuthenticationFailed reasonAuthenticationFailed =
     case reasonAuthenticationFailed of
         Just reason ->
             case reason of
                 LoginWasNotTypedIn ->
-                    "Please type in your login and try again"
+                    "Please type in your login and try again."
 
                 LoginAndPasswordWereIncorrect ->
-                    "Sorry, your credentials could not be verified"
+                    "Sorry, your credentials could not be verified."
 
                 NeitherLoginNorPasswordWereTypedIn ->
-                    "Please type in both, your login and your password, and try again"
+                    "Please type in both, your login and your password, and try again."
 
                 NetworkError ->
-                    "There was a problem connecting to the server"
+                    "There was a problem connecting to the server."
 
                 PasswordWasNotTypedIn ->
-                    "Please type in your password and try again"
+                    "Please type in your password and try again."
+
+                EmailWasInvalid ->
+                    "Please type in a valid email address in the login."
+
+                UserWasDisabled ->
+                    "Your account has been disabled."
+
+                LoginWasNotFound ->
+                    "There's no user with that email address."
+
+                PasswordWasWrong ->
+                    "You typed in the wrong password."
+
+                UnknownError ->
+                    "An unknown error occurred trying to authenticate. Please check your internet connection and credentials and try again."
 
         Nothing ->
             ""
@@ -289,7 +437,7 @@ view model =
         Meetings meetingsModel ->
             viewMeetings
 
-        CreateAMeeting ->
+        CreateOrEditAMeeting meeting ->
             viewCreateAMeeting
 
 
@@ -305,23 +453,36 @@ viewMeetings =
 
 viewMenu : Html Msg
 viewMenu =
-    div [] [ text "Menu" ]
+    div
+        []
+        [ text "Menu"
+        , button [ onClick MenuMeetingsButtonClicked ] [ text "Meetings" ]
+        , button [ onClick MenuSignOutButtonClicked ] [ text "Sign out" ]
+        ]
 
 
 viewLogin : LoginModel -> Html Msg
 viewLogin loginModel =
-    case loginModel of
-        CredentialsInput credentialsInputModel ->
-            div
-                []
-                [ text "Login"
-                , input [ onInput LoginTypedIn, type_ "text" ] []
-                , input [ onInput PasswordTypedIn, type_ "password" ] []
-                , div [] [ getErrorText credentialsInputModel.reasonAuthenticationFailed |> text ]
-                , button [ onClick LoginButtonClicked ] [ text "Login" ]
-                ]
+    let
+        errorMessage =
+            case loginModel of
+                CredentialsInput credentialsInputModel ->
+                    getErrorTextUsingReasonAuthenticationFailed credentialsInputModel.reasonAuthenticationFailed
 
-        Verification ->
-            div
-                []
-                [ text "Verifying your credentials..." ]
+                _ ->
+                    ""
+    in
+        case loginModel of
+            CredentialsInput credentialsInputModel ->
+                div
+                    []
+                    [ text "Login"
+                    , input [ onInput LoginLoginTypedIn, type_ "text", value credentialsInputModel.login ] []
+                    , input [ onInput LoginPasswordTypedIn, type_ "password", value credentialsInputModel.password ] []
+                    , div [] [ errorMessage |> text ]
+                    , button [ onClick LoginLoginButtonClicked ] [ text "Login" ]
+                    ]
+
+            Verification ->
+                div []
+                    [ text "Verifying..." ]
