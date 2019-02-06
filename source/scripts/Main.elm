@@ -592,7 +592,7 @@ viewMeetings meetingsModel =
     section
         [ id "meetings" ]
         [ section [ class "navigation" ] [ label [ class "yellowTextButton", onClick MeetingsIsShowingSignOutButtonClicked ] [ text "Sign out" ] ]
-        , section [ id "meetingsPanel" ] [ section [ id "meetingItemsList" ] (viewMeetingItemsList meetingsModel.meetings) ]
+        , section [ id "meetingsPanel" ] [ section [ id "meetingItemsList" ] (viewMeetingItemsList meetingsModel) ]
         ]
 
 
