@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+    <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta name="copyright" content="&copy; 2019 Redd">
+            <meta name="description" content="Tools to manage Redd Scapes.">
+    </head>
+    <body>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-app.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-auth.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/5.8.1/firebase-firestore.js"></script>
+        <script>
+            // Initialize Firebase
+            var config = {
+                apiKey: "AIzaSyCNIxYpIh97J-RVY7BnKSAPU1FOz4TNNKU",
+                authDomain: "redd-scapes.firebaseapp.com",
+                databaseURL: "https://redd-scapes.firebaseio.com",
+                projectId: "redd-scapes",
+                storageBucket: "redd-scapes.appspot.com",
+                messagingSenderId: "1066267132327"
+            };
+            firebase.initializeApp(config);
+
+            firebase.auth().signInWithEmailAndPassword('t@t.com', '123456')
+        </script>
+
+        <main></main>
+        
+        <script>
+            function deleteGuestsWithAMeetingId () {
+                let meetingId = document.getElementById('meetingId').value
+                firebase.firestore()
+                    .collection('guests')
+                    .where('meetingId', '==', meetingId)
+                    .get()
+                    .then((snapshot) => {
+                        console.log('Came into then', snapshot.docs)
+                        snapshot.forEach((docSnapshot) => {
+                            console.log(docSnapshot.id)
+                            docSnapshot.ref.delete()
+                        })
+                    })
+            }
+            function populateTheDatabaseWithTestMeetingValues () {
+                let numberOfMeetings = Math.round(Math.random() * 5)
+                for (let index = 0; index < numberOfMeetings; index++) {
+                    firebase
+                        .firestore()
+                        .collection('meetings')
+                        .add({ name: 'Meeting ' + index,
+                            date: 1549004204369,
+                            startTime: 1030,
+                            endTime: 1230
+                        })
+                        .then((docRef) => {
+                            populateTheDatabaseWithTestGuestValues (docRef.id)
+                        })
+                        .catch((error) => {
+                            console.log(error)
+                        })
+                }
+            }
+
+            function populateTheDatabaseWithTestGuestValues (meetingId) {
+                let numberOfGuests = Math.round(Math.random() * 10)
+                for (let index = 0; index < numberOfGuests; index++) {
+                    firebase
+                        .firestore()
+                        .collection('guests')
+                        .add({ meetingId : meetingId,
+                            name: 'Person ' + index,
+                            email: 'azurewaters@gmail.com'
+                        })
+                }
+            }
+        </script>
+        <button onclick="populateTheDatabaseWithTestMeetingValues()">Populate With Test Values</button>
+
+        <input id="meetingId">
+        <button onclick="deleteGuestsWithAMeetingId()">Delete Guests With A Certain Meeting Id</button>
+    </body>
+</html>

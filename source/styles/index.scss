@@ -1,5 +1,32 @@
-$colourBackground: rgba(161,161,161,0.15);
-$colourNormalText: #9B9B9B;
+@import url('https://fonts.googleapis.com/css?family=Fira+Sans:300,400');
+
+$colourWhite: #FFFFFF;
+$colourReallyLightGrey: #CCFFFFFF;
+$colourLightGrey: #9B9B9B;
+$colourLightYellow: #DBBD5D;
+$colourYellow: #FFC715;
+$colourMediumGrey: #747474;
+$colourTranslucentGrey: rgba(161,161,161,0.15);
+$colourDarkGrey: #32363B;
+
+$colourBackground: $colourTranslucentGrey;
+$colourLogoBackground: $colourReallyLightGrey;
+$colourNormalText: $colourLightGrey;
+$colourNormalInputText: $colourYellow;
+$colourUnderlineColour: $colourLightGrey;
+
+$fontFamilyFiraSans: "Fira Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+$fontSizeBigYellowRoundedButton: 1.25rem;
+$fontSizeInput: 1.125rem;
+$fontSizeLabel: 0.875rem;
+
+@mixin centeredPanel {
+    align-self: center;
+    background-color: $colourTranslucentGrey;
+    justify-self: center;
+    padding: 4rem;        
+}
+
 
 * {
     box-sizing: border-box;
@@ -7,12 +34,148 @@ $colourNormalText: #9B9B9B;
 
 body {
     background-color: $colourBackground;
+    color: $colourNormalText;
+    display: grid;
+    font: {
+        family: $fontFamilyFiraSans;
+        weight: 300;
+    }
 }
 
 body, html {
+    background-color: $colourDarkGrey;
     border: 0;
     height: 100%;
     margin: 0;
     padding: 0;
     width: 100%;
+}
+
+.bigYellowRoundedButton {
+    background-color: $colourYellow;
+    border: {
+        radius: 2rem;
+        style: none;
+    }
+    color: $colourDarkGrey;
+    font: {
+        family: $fontFamilyFiraSans;
+        size: $fontSizeBigYellowRoundedButton;
+        weight: normal;
+    }
+    height: 2.75rem;
+    padding: .5rem 2rem;
+}
+
+.displayLabel {
+    color: $colourWhite;
+    font: {
+        family: 'Fira Sans';
+        size: $fontSizeInput;
+    }
+}
+
+.labelledInput {
+    display: flex;
+    flex-direction: column;
+    justify-items: left;
+
+    input {
+        &[type="text"], &[type="password"] {
+            background-color: transparent;
+            border: {
+                bottom: solid 1px $colourUnderlineColour;
+                left: none;
+                right: none;
+                top: none;
+            }
+            color: $colourNormalInputText;
+            font: {
+                family: $fontFamilyFiraSans;
+                size: $fontSizeInput;
+                weight: 300;
+            }
+        }
+    }
+    
+    label {
+        color: $colourLightGrey;
+        font: {
+            family: $fontFamilyFiraSans;
+            size: $fontSizeLabel;
+            weight: 300;
+        }
+        line-height: 22px;
+        text-transform: capitalize;
+    }
+}
+
+.navigation {
+    display: grid;
+    justify-content: right;
+    padding: {
+        right: 1rem;
+        top: 1rem;
+    }
+}
+
+.yellowTextButton {
+    color: $colourYellow;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+#loginPanel {
+    @include centeredPanel;
+    display: grid;
+    grid-template-columns: auto;
+    grid-template-rows: repeat(4, min-content);
+    justify-items: center;
+    min-width: 250px;
+    row-gap: 1.125rem;
+    width: 50%;
+
+    #logo {
+        height: 100px;
+        width: 100px;
+    }
+}
+
+#meetings {
+    display: grid;
+    grid-template-columns: auto;
+    grid-template-rows: min-content auto;
+
+    #meetingsPanel {
+        @include centeredPanel;
+        display: grid;
+        grid-template-columns: auto;
+        max-height: 80%;
+        max-width: 80%;
+        overflow: auto;
+    
+        #meetingItemsList {
+            display: grid;
+            row-gap: 1.125rem;
+    
+            .meetingItem {
+                align-items: center;
+                background-color: $colourMediumGrey;
+                column-gap: 2rem;
+                display: grid;
+                grid-template-columns: auto 160px 100px 100px 100px;
+                grid-template-rows: auto;
+                padding: 1.125rem 1.75rem;
+        
+                .labelForDisplayLabel {
+                    color: $colourLightGrey;
+                    font: {
+                        family: 'Fira Sans';
+                        size: $fontSizeLabel;
+                    }
+                    padding-bottom: 0.125rem;
+                }
+            }
+        }
+    }
 }
