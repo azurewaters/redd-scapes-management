@@ -3,11 +3,13 @@ port module Main exposing (..)
 import Browser exposing (element)
 import Debug exposing (..)
 import Dict exposing (Dict)
-import Time
 import Html exposing (button, div, Html, img, input, label, section, text)
-import Html.Attributes exposing (autofocus, class, classList, id, src, type_, value)
+import Html.Attributes exposing (autofocus, class, classList, id, pattern, placeholder, required, src, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Iso8601
 import Json.Decode as Decode exposing (bool, Decoder, decodeValue, field, int, string, Value)
+import Task
+import Time
 
 
 main =
@@ -24,10 +26,14 @@ main =
 
 
 type alias CreateOrEditAMeetingModel =
-    { guests : Guests
+    { currentTimeZone : Time.Zone
+    , guests : Guests
     , meeting : Meeting
-    , newGuestsName : String
+    , meetingsDateIsValid : Bool
+    , meetingsEndTimeIsValid : Bool
+    , meetingsStartTimeIsValid : Bool
     , newGuestsEmail : String
+    , newGuestsName : String
     }
 
 
@@ -59,8 +65,8 @@ type alias Meeting =
     { id : String
     , name : String
     , date : Milliseconds
-    , startTime : Int
-    , endTime : Int
+    , startTime : Milliseconds
+    , endTime : Milliseconds
     }
 
 
@@ -98,8 +104,12 @@ type ReasonAuthenticationFailed
 
 emptyCreateOrEditAMeetingModel : CreateOrEditAMeetingModel
 emptyCreateOrEditAMeetingModel =
-    { guests = Dict.empty
+    { currentTimeZone = Time.utc
+    , guests = Dict.empty
     , meeting = emptyMeeting
+    , meetingsDateIsValid = True
+    , meetingsEndTimeIsValid = True
+    , meetingsStartTimeIsValid = True
     , newGuestsName = ""
     , newGuestsEmail = ""
     }
@@ -158,9 +168,13 @@ type Msg
     | AuthenticationSucceeded
     | CreateOrEditAMeetingAddANewGuestClicked
     | CreateOrEditAMeetingCloseButtonClicked
+    | CreateOrEditAMeetingGotCurrentTimeZone Time.Zone
+    | CreateOrEditAMeetingMeetingsNameTypedIn String
+    | CreateOrEditAMeetingMeetingsDateTypedIn String
+    | CreateOrEditAMeetingMeetingsEndTimeTypedIn String
+    | CreateOrEditAMeetingMeetingsStartTimeTypedIn String
     | CreateOrEditAMeetingNewGuestsEmailTypedIn String
     | CreateOrEditAMeetingNewGuestsNameTypedIn String
-    | CreateOrEditAMeetingNewMeetingsNameTypedIn String
     | LoginIsShowingLoginButtonClicked
     | LoginIsShowingLoginTypedIn String
     | LoginIsShowingPasswordTypedIn String
@@ -196,13 +210,39 @@ update msg model =
                 CreateOrEditAMeetingCloseButtonClicked ->
                     ( MeetingsIsShowing emptyMeetingsModel, Cmd.none )
 
+                CreateOrEditAMeetingGotCurrentTimeZone currentTimeZone ->
+                    ( CreateOrEditAMeetingIsShowing { createOrEditAMeetingModel | currentTimeZone = currentTimeZone }, Cmd.none )
+
+                CreateOrEditAMeetingMeetingsDateTypedIn meetingsDate ->
+                    let
+                        newMeetingsDate : Maybe Time.Posix
+                        newMeetingsDate =
+                            case Iso8601.toTime (meetingsDate ++ "T00:00+5:30") of
+                                Ok dateInPosix ->
+                                    Just dateInPosix
+
+                                Err error ->
+                                    Nothing
+
+                        newCreateOrEditAMeetingModel =
+                            case newMeetingsDate of
+                                Just dateInPosix ->
+                                    createOrEditAMeetingModel.meeting
+                                        |> (\meeting -> { meeting | date = Time.posixToMillis dateInPosix })
+                                        |> (\newMeeting -> { createOrEditAMeetingModel | meeting = newMeeting, meetingsDateIsValid = True })
+
+                                Nothing ->
+                                    { createOrEditAMeetingModel | meetingsDateIsValid = False }
+                    in
+                        ( CreateOrEditAMeetingIsShowing newCreateOrEditAMeetingModel, Cmd.none )
+
                 CreateOrEditAMeetingNewGuestsEmailTypedIn newNewGuestsEmail ->
                     ( CreateOrEditAMeetingIsShowing { createOrEditAMeetingModel | newGuestsEmail = newNewGuestsEmail }, Cmd.none )
 
                 CreateOrEditAMeetingNewGuestsNameTypedIn newNewGuestsName ->
                     ( CreateOrEditAMeetingIsShowing { createOrEditAMeetingModel | newGuestsName = newNewGuestsName }, Cmd.none )
 
-                CreateOrEditAMeetingNewMeetingsNameTypedIn newName ->
+                CreateOrEditAMeetingMeetingsNameTypedIn newName ->
                     let
                         changeMeetingsName : CreateOrEditAMeetingModel -> String -> CreateOrEditAMeetingModel
                         changeMeetingsName existingCreateOrEditAMeetingModel meetingsNewName =
@@ -215,6 +255,7 @@ update msg model =
                         ( CreateOrEditAMeetingIsShowing (changeMeetingsName createOrEditAMeetingModel newName), Cmd.none )
 
                 _ ->
+                    -- This shouldn't ever happen, but if it did, ignore all messages coming to the wrong model
                     ( model, Cmd.none )
 
         LoginIsShowing loginIsShowingModel ->
@@ -265,7 +306,7 @@ update msg model =
                     ( model, deleteThisMeeting meetingId )
 
                 MeetingsIsShowingMeetingItemEditButtonClicked meeting ->
-                    ( CreateOrEditAMeetingIsShowing { emptyCreateOrEditAMeetingModel | meeting = meeting }, fetchAMeetingsGuests meeting.id )
+                    ( CreateOrEditAMeetingIsShowing { emptyCreateOrEditAMeetingModel | meeting = meeting }, [ fetchAMeetingsGuests meeting.id, getTheCurrentTimeZone ] )
 
                 MeetingsIsShowingSignOutButtonClicked ->
                     ( model, signOut True )
@@ -356,6 +397,11 @@ updatePasswordTypedIn model password =
 
         _ ->
             model
+
+
+getTheCurrentTimeZone : Cmd Msg
+getTheCurrentTimeZone =
+    Task.perform CreateOrEditAMeetingGotCurrentTimeZone Time.here
 
 
 port deleteThisMeeting : String -> Cmd msg
@@ -537,9 +583,14 @@ viewCreateOrEditAMeetingIsShowing createOrEditAMeetingModel =
             [ div
                 [ class "labelledInput" ]
                 [ label [ class "labelForInput" ] [ text "Name of the Meeting" ]
-                , input [ autofocus True, onInput CreateOrEditAMeetingNewMeetingsNameTypedIn, type_ "text", value createOrEditAMeetingModel.meeting.name ] []
+                , input [ autofocus True, onInput CreateOrEditAMeetingMeetingsNameTypedIn, type_ "text", value createOrEditAMeetingModel.meeting.name ] []
                 ]
-            , div [ id "timeAndDateHolder" ] []
+            , div
+                [ id "timeAndDateHolder" ]
+                [ div [ id "dateHolder" ] [ img [] [], input [ onInput CreateOrEditAMeetingMeetingsDateTypedIn, pattern "", placeholder "YYYY-MM-DD", required True, type_ "date" ] [] ]
+                , div [ id "timeHolder" ] [ img [] [], input [ onInput CreateOrEditAMeetingMeetingsStartTimeTypedIn, pattern "/^(10|11|12|[0]?[1-9]):[0-5][0-9]\\s*(AM|PM)$/", placeholder "HH:MM AM/PM", required True, type_ "time", value createOrEditAMeetingModel.meeting.startTime ] ]
+                , div [ id "timeHolder" ] [ img [] [], input [ onInput CreateOrEditAMeetingMeetingsEndTimeTypedIn, pattern "/^(10|11|12|[0]?[1-9]):[0-5][0-9]\\s*(AM|PM)$/", placeholder "HH:MM AM/PM", required True, type_ "time", value createOrEditAMeetingModel.meeting.startTime ] ]
+                ]
             , div [ id "guestsList" ] (viewGuests createOrEditAMeetingModel.guests)
             , div [ id "newGuest" ]
                 [ input [ onInput CreateOrEditAMeetingNewGuestsNameTypedIn, value createOrEditAMeetingModel.newGuestsName ] []

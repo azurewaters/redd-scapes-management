@@ -45,13 +45,20 @@
             function populateTheDatabaseWithTestMeetingValues () {
                 let numberOfMeetings = Math.round(Math.random() * 5)
                 for (let index = 0; index < numberOfMeetings; index++) {
+                    let now = new Date()    //  Current date and time
+                    let todaysDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                    let randomNumberOfDaysAhead = Math.floor(Math.random() * 40) + 1
+                    let dateOfMeeting = new Date(todaysDate.valueOf() + (randomNumberOfDaysAhead * 24 * 60 * 60 * 1000))
+                    let startTimeOfMeeting = new Date(dateOfMeeting.valueOf() + (14 * 60 * 60 * 1000) + (15 * 60 * 1000))   //  2:15 PM
+                    let endTimeOfMeeting = new Date(startTimeOfMeeting.valueOf() + (60 * 60 * 1000))    //  Meeting lasts one hour
+
                     firebase
                         .firestore()
                         .collection('meetings')
                         .add({ name: 'Meeting ' + index,
-                            date: 1549004204369,
-                            startTime: 1030,
-                            endTime: 1230
+                            date: dateOfMeeting.valueOf(),
+                            startTime: startTimeOfMeeting.valueOf(),
+                            endTime: endTimeOfMeeting.valueOf()
                         })
                         .then((docRef) => {
                             populateTheDatabaseWithTestGuestValues (docRef.id)
